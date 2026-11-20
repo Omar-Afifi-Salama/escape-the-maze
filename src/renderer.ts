@@ -636,6 +636,26 @@ export class Renderer {
         }
     }
 
+    // ray distances across the FOV for the map overlay's vision cone
+    getRaySamples(n = 48): Array<{ angle: number; dist: number }> {
+        const out: Array<{ angle: number; dist: number }> = [];
+        const w = this.screen.width;
+        const planeLen = Math.hypot(this.player.planeX, this.player.planeY);
+
+        for (let i = 0; i < n; i++) {
+            const x = Math.min(w - 1, Math.floor((i * (w - 1)) / (n - 1)));
+            const cameraX = (2 * x) / w - 1;
+            const rx = this.player.dirX + this.player.planeX * cameraX;
+            const ry = this.player.dirY + this.player.planeY * cameraX;
+            const rayLen = Math.hypot(rx, ry);
+            const dist = (this.zBuffer[x] ?? 30) * rayLen;
+            const angle = Math.atan(cameraX * planeLen); // relative to dir
+            out.push({ angle, dist });
+        }
+
+        return out;
+    }
+
     // fog-of-war minimap: player-centered scrolling window over explored tiles
     drawMinimap() {
         const view = 15; // tiles shown across

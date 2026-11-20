@@ -79,9 +79,9 @@ export class HUD {
         const { ctx, width: w } = this;
         const playing = game.state === "playing";
 
-        // top bar
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
-        ctx.fillRect(0, 0, w, 42);
+        // HUD text gets a dark outline so it reads over bright walls
+        ctx.shadowColor = "rgba(0,0,0,0.85)";
+        ctx.shadowBlur = 4;
 
         // timer / stopwatch
         const timed = game.gameMode === "timed";
@@ -115,13 +115,15 @@ export class HUD {
             x += 44;
         }
 
-        // seed
+        // seed — bottom-right corner, small and faint
         ctx.globalAlpha = 0.5;
         ctx.fillStyle = "#ffffff";
-        ctx.font = "16px monospace";
+        ctx.font = "15px monospace";
         ctx.textAlign = "right";
-        ctx.fillText(`seed ${game.seed}`, w - 14, 21);
+        ctx.fillText(`seed ${game.seed}`, w - 12, this.height - 16);
         ctx.globalAlpha = 1;
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
 
         // locked-door hint
         if (playing && game.hint) {
@@ -147,15 +149,18 @@ export class HUD {
             ctx.globalAlpha = 1;
         }
 
-        if (mapOpen) this.drawMapOverlay(game.world, game.player);
+        if (mapOpen) this.drawMapOverlay(game);
 
         if (game.state === "won" || game.state === "lost") {
             this.drawEnd(game);
         }
     }
 
-    // big overlay: everything explored so far — the "paper maze" view
-    private drawMapOverlay(world: WorldMap, player: { posX: number; posY: number }) {
+    // big overlay: everything explored so far — the "paper maze" view,
+    // with a vision cone showing where you are and what you can see
+    private drawMapOverlay(game: Game) {
+        const world = game.world;
+        const player = game.player;
         const { ctx, width: w, height: h } = this;
         const ts = Math.floor(Math.min(w / world.width, h / world.height));
         const size = world.width * ts;
@@ -188,6 +193,30 @@ export class HUD {
             }
         }
 
+        // vision cone: from this frame's ray distances, so it stops at walls
+        const rays = game.renderer.getRaySamples(48);
+        const dirAngle = Math.atan2(player.dirY, player.dirX);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(ox, oy, size, size);
+        ctx.clip();
+
+        ctx.beginPath();
+        ctx.moveTo(ox + player.posX * ts, oy + player.posY * ts);
+        for (const { angle, dist } of rays) {
+            const a = dirAngle + angle;
+            ctx.lineTo(
+                ox + (player.posX + Math.cos(a) * dist) * ts,
+                oy + (player.posY + Math.sin(a) * dist) * ts,
+            );
+        }
+        ctx.closePath();
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.35)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
         // player dot
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(
@@ -196,6 +225,7 @@ export class HUD {
             6,
             6,
         );
+        ctx.restore();
 
         ctx.strokeStyle = "#444444";
         ctx.strokeRect(ox - 1, oy - 1, size + 2, size + 2);
