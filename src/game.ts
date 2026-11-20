@@ -6,7 +6,7 @@ import { SPRITE_TEX, TILE } from "./maze.js";
 import { HUD } from "./hud.js";
 import { Menu } from "./menu.js";
 import { Sprite } from "./sprite.js";
-import { CONFIG } from "./config.js";
+import { CONFIG, DIFFICULTIES, type Difficulty } from "./config.js";
 import { loadSettings, saveSettings, type Settings } from "./settings.js";
 
 export type KeyColor = "red" | "blue" | "gold";
@@ -22,9 +22,10 @@ export class Game {
 
     settings: Settings = loadSettings();
     gameMode: "timed" | "untimed" = "timed";
-    difficulty: "easy" | "medium" | "hard" = "medium";
+    difficulty: Difficulty = "medium";
 
     timeLeft: number = CONFIG.TIME_LIMIT;
+    elapsed = 0;
     inventory = new Set<KeyColor>();
     hint = "";
     bestLeft: number | null = null;
@@ -51,13 +52,20 @@ export class Game {
 
     newRun(seed: number) {
         this.seed = seed;
-        const maze = generateMaze(seed);
+        const spec = DIFFICULTIES[this.difficulty];
+        const maze = generateMaze(
+            seed,
+            this.difficulty,
+            this.gameMode === "timed" ? spec.hourglasses : 0,
+        );
         this.world = new WorldMap(maze);
         this.player = new Player(maze.start);
         this.player.setFov(this.settings.fovDeg);
         this.renderer = new Renderer(this.screen, this.world, this.player);
         this.renderer.setRenderMode(this.settings.renderMode);
-        this.timeLeft = CONFIG.TIME_LIMIT;
+        this.renderer.setViewDist(spec.viewDist);
+        this.timeLeft = this.gameMode === "timed" ? spec.timeLimit : Infinity;
+        this.elapsed = 0;
         this.inventory.clear();
         this.hint = "";
         this.state = "playing";
@@ -200,11 +208,15 @@ export class Game {
     update(dt: number, keys: Set<string>) {
         if (this.state !== "playing") return;
 
-        this.timeLeft -= dt;
-        if (this.timeLeft <= 0) {
-            this.timeLeft = 0;
-            this.state = "lost";
-            return;
+        if (this.gameMode === "timed") {
+            this.timeLeft -= dt;
+            if (this.timeLeft <= 0) {
+                this.timeLeft = 0;
+                this.state = "lost";
+                return;
+            }
+        } else {
+            this.elapsed += dt;
         }
 
         // movement
@@ -263,16 +275,21 @@ export class Game {
         const ty = Math.floor(this.player.posY);
         if (this.world.getTile(tx, ty) === TILE.EXIT) {
             this.state = "won";
-            if (this.bestLeft === null || this.timeLeft > this.bestLeft) {
-                this.bestLeft = this.timeLeft;
-                localStorage.setItem(this.bestKey(), String(this.timeLeft));
+            const score = this.gameMode === "timed" ? this.timeLeft : this.elapsed;
+            const better =
+                this.gameMode === "timed"
+                    ? this.bestLeft === null || score > this.bestLeft
+                    : this.bestLeft === null || score < this.bestLeft;
+            if (better) {
+                this.bestLeft = score;
+                localStorage.setItem(this.bestKey(), String(score));
             }
             return;
         }
 
-        // tension: fog closes in during the last 30 seconds (textured mode only)
+        // tension: fog closes in during the last 30 seconds (timed mode only)
         this.renderer.setTension(
-            this.timeLeft < CONFIG.TENSION_TIME
+            this.gameMode === "timed" && this.timeLeft < CONFIG.TENSION_TIME
                 ? 1 - this.timeLeft / CONFIG.TENSION_TIME
                 : 0,
         );

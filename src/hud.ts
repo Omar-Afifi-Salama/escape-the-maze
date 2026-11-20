@@ -83,14 +83,23 @@ export class HUD {
         ctx.fillStyle = "rgba(0,0,0,0.55)";
         ctx.fillRect(0, 0, w, 42);
 
-        // timer
-        const urgent = game.timeLeft < CONFIG.TENSION_TIME;
-        const pulse = urgent && Math.floor(performance.now() / 250) % 2 === 0;
-        ctx.fillStyle = pulse ? "#ff5544" : urgent ? "#ffaa88" : "#ffffff";
-        ctx.font = "bold 28px monospace";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "middle";
-        ctx.fillText(fmt(game.timeLeft), 14, 21);
+        // timer / stopwatch
+        const timed = game.gameMode === "timed";
+        if (timed) {
+            const urgent = game.timeLeft < CONFIG.TENSION_TIME;
+            const pulse = urgent && Math.floor(performance.now() / 250) % 2 === 0;
+            ctx.fillStyle = pulse ? "#ff5544" : urgent ? "#ffaa88" : "#ffffff";
+            ctx.font = "bold 28px monospace";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.fillText(fmt(game.timeLeft), 14, 21);
+        } else {
+            ctx.fillStyle = "#9fd8ff";
+            ctx.font = "bold 28px monospace";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.fillText(fmt(game.elapsed), 14, 21);
+        }
 
         // keycard icons
         let x = 150;
@@ -132,7 +141,7 @@ export class HUD {
     // big overlay: everything explored so far — the "paper maze" view
     private drawMapOverlay(world: WorldMap, player: { posX: number; posY: number }) {
         const { ctx, width: w, height: h } = this;
-        const ts = Math.floor(Math.min(w, h) / world.width); // ~13px
+        const ts = Math.floor(Math.min(w / world.width, h / world.height));
         const size = world.width * ts;
         const ox = Math.floor((w - size) / 2);
         const oy = Math.floor((h - size) / 2);
@@ -193,10 +202,13 @@ export class HUD {
         ctx.fillStyle = "#ffffff";
         ctx.font = "26px monospace";
         if (won) {
-            ctx.fillText(`escaped with ${fmt(game.timeLeft)} left`, w / 2, h / 2 + 4);
+            const line = game.gameMode === "timed"
+                ? `escaped with ${fmt(game.timeLeft)} left`
+                : `escaped in ${fmt(game.elapsed)}`;
+            ctx.fillText(line, w / 2, h / 2 + 4);
             if (game.bestLeft !== null) {
                 ctx.fillStyle = "#e0be32";
-                ctx.fillText(`best: ${fmt(game.bestLeft)} left`, w / 2, h / 2 + 40);
+                ctx.fillText(game.bestLine() ?? "", w / 2, h / 2 + 40);
             }
         } else {
             ctx.fillText("the torchlight won this time.", w / 2, h / 2 + 4);

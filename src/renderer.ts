@@ -41,6 +41,7 @@ export class Renderer {
 
     // fog: dark indigo by default, shifted toward red as the timer runs out
     private static readonly DEFAULT_MAX_VIEW_DIST = 14;
+    private baseViewDist = Renderer.DEFAULT_MAX_VIEW_DIST;
     private maxViewDist = Renderer.DEFAULT_MAX_VIEW_DIST;
     private fogR = 15;
     private fogG = 18;
@@ -124,13 +125,19 @@ export class Renderer {
         return factor * factor;
     }
 
+    // base view distance per difficulty
+    setViewDist(v: number): void {
+        this.baseViewDist = v;
+        if (this.tensionQ <= 0) this.maxViewDist = v;
+    }
+
     // As the timer runs out: tighten the view distance and shift fog toward red
     setTension(t: number): void {
         const q = Math.round(Math.max(0, Math.min(1, t)) * 16) / 16;
         if (q === this.tensionQ) return;
         this.tensionQ = q;
 
-        this.maxViewDist = Renderer.DEFAULT_MAX_VIEW_DIST - 6 * q;
+        this.maxViewDist = Math.max(6, this.baseViewDist - 6 * q);
         this.fogR = Math.round(15 + (40 - 15) * q);
         this.fogG = Math.round(18 + (8 - 18) * q);
         this.fogB = Math.round(35 + (10 - 35) * q);

@@ -1,20 +1,24 @@
-// Seeded hub-and-spoke maze generator.
+// Seeded stacked-zone maze generator.
 //
-// Layout (39x39 grid for 19 cells):
-//   - 5x5 stone hub room in the center (player spawn)
-//   - 4 wings carved by recursive backtracker, each with a theme:
-//       West  (open entry)  -> red brick wing  -> RED key
-//       North (red door)    -> blue stone wing -> BLUE key
-//       East  (blue door)   -> moss wing       -> GOLD key
-//       South (gold gate)   -> hazard wing     -> EXIT
-//   - ~13% of dead ends are "braided" open so there are loops and shortcuts.
+// Layout: three full-width zones stacked bottom to top, separated by solid
+// wall rows with one door each. The player starts in Zone 1 (red brick),
+// climbs to Zone 2 (blue stone) through the red door, then Zone 3 (hazard)
+// through the blue door. Zone 3 holds the gold key and the exit behind a
+// gold gate — a goal inside the last zone too.
+//
+//   ┌──── Zone 3 (hazard) ────┐  gold key, exit gate
+//   ├──────[ BLUE DOOR ]──────┤
+//   │      Zone 2 (blue)      │  blue key
+//   ├──────[ RED DOOR ]───────┤
+//   │      Zone 1 (red) start │  red key
+//   └─────────────────────────┘
 import type { SpriteKind } from "./sprite.js";
-import { CONFIG } from "./config.js";
+import { DIFFICULTIES, type Difficulty } from "./config.js";
 
 export const TILE = {
     FLOOR: 0,
     BORDER: 1,
-    HUB: 2,
+    HUB: 2, // kept for texture-registry compatibility; unused in this layout
     RED: 3,
     BLUE: 4,
     MOSS: 5,
@@ -66,7 +70,7 @@ export interface MazeData {
     width: number;
     height: number;
     tiles: number[][];
-    zone: Uint8Array; // 0 hub, 1 red wing, 2 blue, 3 moss, 4 hazard
+    zone: Uint8Array; // 0 unused, 1 red zone, 2 blue zone, 4 hazard zone
     start: MazeStart;
     doors: MazeDoor[];
     items: MazeItem[];
@@ -82,97 +86,19 @@ export function mulberry32(seed: number): () => number {
     };
 }
 
-interface WingSpec {
-    zone: number;
-    theme: number;
-    rect: { x0: number; x1: number; y0: number; y1: number };
-    xs: number[]; // cell coords (odd grid coords)
-    ys: number[];
-    entry: [number, number]; // wing cell adjacent to the entry corridor
-    entryPath: Array<[number, number]>; // tiles punched from the hub ring out
-    doorTile?: number; // placed on the ring slot when the wing is locked
-    prize: "red" | "blue" | "gold" | "exit";
-    lanternTex: number;
+interface Band {
+    zone: number; // minimap zone id
+    theme: number; // wall tile id
+    y0: number; // band top row (inclusive)
+    y1: number; // band bottom row (inclusive)
+    ys: number[]; // cell rows (odd)
+    entry: [number, number]; // cell the band is carved from
 }
 
-function oddRange(a: number, b: number): number[] {
-    const out: number[] = [];
-    for (let i = a; i <= b; i += 2) out.push(i);
-    return out;
+interface ZoneFeatures {
+    deadEnds: Array<{ x: number; y: number; d: number }>;
+    intersections: Array<{ x: number; y: number; d: number }>;
 }
-
-const N = CONFIG.GRID_CELLS; // cells per full dimension
-const G = N * 2 + 1; // grid size
-
-const wings: WingSpec[] = [
-    {
-        // west: full-height strip, open entry, holds the red key
-        zone: 1,
-        theme: TILE.RED,
-        rect: { x0: 1, x1: N - 5, y0: 1, y1: G - 2 },
-        xs: oddRange(1, N - 6),
-        ys: oddRange(1, G - 2),
-        entry: [N - 6, N - 2],
-        entryPath: [
-            [N - 3, N - 2],
-            [N - 4, N - 2],
-            [N - 5, N - 2],
-        ],
-        prize: "red",
-        lanternTex: SPRITE_TEX.LANTERN_RED,
-    },
-    {
-        // north: middle strip behind the red door, holds the blue key
-        zone: 2,
-        theme: TILE.BLUE,
-        rect: { x0: N - 4, x1: N + 4, y0: 1, y1: N - 5 },
-        xs: oddRange(N - 4, N + 4),
-        ys: oddRange(1, N - 6),
-        entry: [N - 2, N - 6],
-        entryPath: [
-            [N - 2, N - 3],
-            [N - 2, N - 4],
-            [N - 2, N - 5],
-        ],
-        doorTile: TILE.DOOR_RED,
-        prize: "blue",
-        lanternTex: SPRITE_TEX.LANTERN_BLUE,
-    },
-    {
-        // east: full-height strip behind the blue door, holds the gold key
-        zone: 3,
-        theme: TILE.MOSS,
-        rect: { x0: N + 5, x1: G - 2, y0: 1, y1: G - 2 },
-        xs: oddRange(N + 6, G - 2),
-        ys: oddRange(1, G - 2),
-        entry: [N + 6, N + 2],
-        entryPath: [
-            [N + 3, N + 2],
-            [N + 4, N + 2],
-            [N + 5, N + 2],
-        ],
-        doorTile: TILE.DOOR_BLUE,
-        prize: "gold",
-        lanternTex: SPRITE_TEX.LANTERN_GREEN,
-    },
-    {
-        // south: middle strip behind the gold gate, holds the exit
-        zone: 4,
-        theme: TILE.HAZARD,
-        rect: { x0: N - 4, x1: N + 4, y0: N + 5, y1: G - 2 },
-        xs: oddRange(N - 4, N + 4),
-        ys: oddRange(N + 6, G - 2),
-        entry: [N + 2, N + 6],
-        entryPath: [
-            [N + 2, N + 3],
-            [N + 2, N + 4],
-            [N + 2, N + 5],
-        ],
-        doorTile: TILE.DOOR_GOLD,
-        prize: "exit",
-        lanternTex: SPRITE_TEX.LANTERN_GOLD,
-    },
-];
 
 const DIRS: Array<[number, number]> = [
     [1, 0],
@@ -185,22 +111,35 @@ function key(x: number, y: number): string {
     return `${x},${y}`;
 }
 
-// carve one wing with a recursive backtracker, then braid some dead ends open
-function carveWing(tiles: number[][], wing: WingSpec, rng: () => number): void {
-    const inRegion = (cx: number, cy: number): boolean =>
-        wing.xs.includes(cx) && wing.ys.includes(cy);
+function oddRange(a: number, b: number): number[] {
+    const out: number[] = [];
+    for (let i = a; i <= b; i += 2) out.push(i);
+    return out;
+}
 
-    const visited = new Set([key(wing.entry[0], wing.entry[1])]);
-    tiles[wing.entry[1]]![wing.entry[0]] = TILE.FLOOR;
+// carve one band with a recursive backtracker, then braid some dead ends open
+function carveBand(
+    tiles: number[][],
+    band: Band,
+    rng: () => number,
+    braid: number,
+    width: number,
+): void {
+    const xs = oddRange(1, width - 2);
+    const inBand = (cx: number, cy: number): boolean =>
+        xs.includes(cx) && band.ys.includes(cy);
 
-    const stack: Array<[number, number]> = [[wing.entry[0], wing.entry[1]]];
+    const visited = new Set([key(band.entry[0], band.entry[1])]);
+    tiles[band.entry[1]]![band.entry[0]] = TILE.FLOOR;
+
+    const stack: Array<[number, number]> = [[band.entry[0], band.entry[1]]];
 
     while (stack.length > 0) {
         const [cx, cy] = stack[stack.length - 1]!;
 
         const options = DIRS.filter(
             ([dx, dy]) =>
-                inRegion(cx + 2 * dx, cy + 2 * dy) &&
+                inBand(cx + 2 * dx, cy + 2 * dy) &&
                 !visited.has(key(cx + 2 * dx, cy + 2 * dy)),
         );
 
@@ -219,19 +158,19 @@ function carveWing(tiles: number[][], wing: WingSpec, rng: () => number): void {
         stack.push([nx, ny]);
     }
 
-    // braid: open ~13% of dead ends so the maze has loops, not one solution path
-    for (const cx of wing.xs) {
-        for (const cy of wing.ys) {
+    // braid: open a fraction of dead ends so the maze has loops
+    for (const cx of xs) {
+        for (const cy of band.ys) {
             const open = DIRS.filter(
                 ([dx, dy]) =>
-                    inRegion(cx + 2 * dx, cy + 2 * dy) &&
+                    inBand(cx + 2 * dx, cy + 2 * dy) &&
                     tiles[cy + dy]![cx + dx] === TILE.FLOOR,
             );
-            if (open.length !== 1 || rng() >= 0.13) continue;
+            if (open.length !== 1 || rng() >= braid) continue;
 
             const closed = DIRS.filter(
                 ([dx, dy]) =>
-                    inRegion(cx + 2 * dx, cy + 2 * dy) &&
+                    inBand(cx + 2 * dx, cy + 2 * dy) &&
                     tiles[cy + dy]![cx + dx] !== TILE.FLOOR,
             );
             if (closed.length === 0) continue;
@@ -242,51 +181,50 @@ function carveWing(tiles: number[][], wing: WingSpec, rng: () => number): void {
     }
 }
 
-// color the uncarved walls inside a wing and tag the zone map
-function themeRegion(
+// color the uncarved walls inside a band and tag the zone map
+function themeBand(
     tiles: number[][],
-    wing: WingSpec,
+    band: Band,
     zone: Uint8Array,
-    grid: number,
+    width: number,
+    height: number,
 ): void {
-    const { rect } = wing;
-    for (let y = rect.y0; y <= rect.y1; y++) {
-        for (let x = rect.x0; x <= rect.x1; x++) {
-            const border =
-                x === 0 || y === 0 || x === grid - 1 || y === grid - 1;
+    for (let y = band.y0; y <= band.y1; y++) {
+        for (let x = 0; x <= width - 1; x++) {
+            const border = x === 0 || y === 0 || x === width - 1 || y === height - 1;
             if (!border && tiles[y]![x] === TILE.BORDER) {
-                tiles[y]![x] = wing.theme;
+                tiles[y]![x] = band.theme;
             }
-            zone[y * grid + x] = wing.zone;
+            zone[y * width + x] = band.zone;
         }
     }
 }
 
-// BFS distances from a cell, constrained to a region
+// BFS distances from a tile, constrained to a band
 function bfsDistances(
     tiles: number[][],
-    rect: { x0: number; x1: number; y0: number; y1: number },
+    band: Band,
     sx: number,
     sy: number,
-    grid: number,
+    width: number,
 ): Map<number, number> {
     const dist = new Map<number, number>();
-    dist.set(sy * grid + sx, 0);
+    dist.set(sy * width + sx, 0);
     const queue: Array<[number, number]> = [[sx, sy]];
 
     while (queue.length > 0) {
         const [x, y] = queue.shift()!;
-        const d = dist.get(y * grid + x)!;
+        const d = dist.get(y * width + x)!;
 
         for (const [dx, dy] of DIRS) {
             const nx = x + dx;
             const ny = y + dy;
-            if (nx < rect.x0 || nx > rect.x1 || ny < rect.y0 || ny > rect.y1) {
+            if (nx < 1 || nx > width - 2 || ny < band.y0 + 1 || ny > band.y1 - 1) {
                 continue;
             }
             const t = tiles[ny]![nx]!;
             if (t !== TILE.FLOOR && t !== TILE.EXIT) continue;
-            const i = ny * grid + nx;
+            const i = ny * width + nx;
             if (dist.has(i)) continue;
             dist.set(i, d + 1);
             queue.push([nx, ny]);
@@ -296,24 +234,19 @@ function bfsDistances(
     return dist;
 }
 
-interface WingFeatures {
-    deadEnds: Array<{ x: number; y: number; d: number }>;
-    intersections: Array<{ x: number; y: number; d: number }>;
-}
-
-function analyzeWing(
+function analyzeBand(
     tiles: number[][],
-    wing: WingSpec,
-    grid: number,
-): WingFeatures {
-    const dist = bfsDistances(tiles, wing.rect, wing.entry[0], wing.entry[1], grid);
-    const deadEnds: WingFeatures["deadEnds"] = [];
-    const intersections: WingFeatures["intersections"] = [];
+    band: Band,
+    width: number,
+): ZoneFeatures {
+    const dist = bfsDistances(tiles, band, band.entry[0], band.entry[1], width);
+    const deadEnds: ZoneFeatures["deadEnds"] = [];
+    const intersections: ZoneFeatures["intersections"] = [];
 
-    for (const cy of wing.ys) {
-        for (const cx of wing.xs) {
+    for (const cy of band.ys) {
+        for (let cx = 1; cx <= width - 2; cx++) {
             if (tiles[cy]![cx] !== TILE.FLOOR) continue;
-            const d = dist.get(cy * grid + cx);
+            const d = dist.get(cy * width + cx);
             if (d === undefined) continue;
 
             let open = 0;
@@ -331,140 +264,227 @@ function analyzeWing(
     return { deadEnds, intersections };
 }
 
-export function generateMaze(seed: number): MazeData {
+export function generateMaze(
+    seed: number,
+    difficulty: Difficulty = "medium",
+    hourglassesWanted = 3,
+): MazeData {
+    const spec = DIFFICULTIES[difficulty];
     const rng = mulberry32(seed);
-    const grid = G;
+
+    const width = 2 * spec.zoneCellsW + 1;
+    const bandHeight = 2 * spec.zoneCellsH + 1;
+    const height = 3 * bandHeight + 2;
 
     const tiles: number[][] = [];
-    for (let y = 0; y < grid; y++) {
-        tiles.push(new Array<number>(grid).fill(TILE.BORDER));
+    for (let y = 0; y < height; y++) {
+        tiles.push(new Array<number>(width).fill(TILE.BORDER));
     }
-    const zone = new Uint8Array(grid * grid);
+    const zone = new Uint8Array(width * height);
 
-    // hub room + its wall ring
-    const hub0 = N - 2;
-    const hub1 = N + 2;
-    for (let y = hub0 - 1; y <= hub1 + 1; y++) {
-        for (let x = hub0 - 1; x <= hub1 + 1; x++) {
-            const ring =
-                x === hub0 - 1 || x === hub1 + 1 || y === hub0 - 1 || y === hub1 + 1;
-            tiles[y]![x] = ring ? TILE.HUB : TILE.FLOOR;
-        }
+    // bands, top to bottom: zone3 (hazard), zone2 (blue), zone1 (red)
+    const bands: Band[] = [
+        {
+            zone: 4,
+            theme: TILE.HAZARD,
+            y0: 0,
+            y1: bandHeight - 1,
+            ys: oddRange(1, bandHeight - 2),
+            entry: [1, 1], // placeholder, re-carved below
+        },
+        {
+            zone: 2,
+            theme: TILE.BLUE,
+            y0: bandHeight + 1,
+            y1: 2 * bandHeight,
+            ys: oddRange(bandHeight + 2, 2 * bandHeight - 1),
+            entry: [1, 1],
+        },
+        {
+            zone: 1,
+            theme: TILE.RED,
+            y0: 2 * bandHeight + 2,
+            y1: 3 * bandHeight + 1,
+            ys: oddRange(2 * bandHeight + 3, 3 * bandHeight),
+            entry: [1, 1],
+        },
+    ];
+
+    // start cell: center of the bottom band (snapped to an odd cell row)
+    const startCol: number = spec.zoneCellsW; // odd center column
+    const yMid = 2 * bandHeight + 2 + spec.zoneCellsH;
+    const startCell: [number, number] = [
+        startCol,
+        yMid % 2 === 1 ? yMid : yMid + 1,
+    ];
+
+    // carve every band from a central cell so the whole band is connected
+    bands[2]!.entry = startCell;
+    bands[1]!.entry = [startCol, 2 * bandHeight - 1];
+    bands[0]!.entry = [startCol, bandHeight - 2];
+
+    for (const band of bands) {
+        carveBand(tiles, band, rng, spec.braid, width);
+        themeBand(tiles, band, zone, width, height);
     }
 
     const doors: MazeDoor[] = [];
     const items: MazeItem[] = [];
     const occupied = new Set<string>();
 
-    for (const wing of wings) {
-        carveWing(tiles, wing, rng);
-        themeRegion(tiles, wing, zone, grid);
+    // helper: place an item at a tile center
+    const place = (t: { x: number; y: number }, kind: SpriteKind, texId: number) => {
+        items.push({ x: t.x + 0.5, y: t.y + 0.5, kind, texId });
+        occupied.add(key(t.x, t.y));
+    };
 
-        // punch the entry corridor; the ring slot becomes a door when locked
-        wing.entryPath.forEach(([x, y], i) => {
-            if (wing.doorTile !== undefined && i === 0) {
-                tiles[y]![x] = wing.doorTile;
-                doors.push({ x, y, tile: wing.doorTile });
-            } else {
-                tiles[y]![x] = TILE.FLOOR;
+    // --- zone 1: red key on the farthest dead end from the start ---
+    const z1 = bands[2]!;
+    const z1Feat = analyzeBand(tiles, z1, width);
+    const z1Dist = bfsDistances(tiles, z1, startCell[0], startCell[1], width);
+    const redKey = z1Feat.deadEnds[0] ?? { x: startCell[0], y: startCell[1], d: 0 };
+    place(redKey, "key", SPRITE_TEX.KEY_RED);
+
+    // --- red door: column as far from the red key as possible ---
+    const z1FromKey = bfsDistances(tiles, z1, redKey.x, redKey.y, width);
+    let dx1 = startCol;
+    let bestD = -1;
+    for (let dx = 1; dx <= width - 2; dx += 2) {
+        const d = z1FromKey.get((2 * bandHeight + 3) * width + dx) ?? -1;
+        if (d > bestD) {
+            bestD = d;
+            dx1 = dx;
+        }
+    }
+    tiles[2 * bandHeight + 1]![dx1] = TILE.DOOR_RED;
+    doors.push({ x: dx1, y: 2 * bandHeight + 1, tile: TILE.DOOR_RED });
+    tiles[2 * bandHeight]![dx1] = TILE.FLOOR;
+    tiles[2 * bandHeight + 2]![dx1] = TILE.FLOOR;
+
+    // --- zone 2: blue key on the farthest dead end from the red door ---
+    const z2 = bands[1]!;
+    const z2Entry: [number, number] = [dx1, 2 * bandHeight - 1];
+    const z2Feat = analyzeBand(tiles, z2, width);
+    const z2Dist = bfsDistances(tiles, z2, z2Entry[0], z2Entry[1], width);
+    const blueKey =
+        z2Feat.deadEnds.find((e) => !occupied.has(key(e.x, e.y))) ??
+        { x: z2Entry[0], y: z2Entry[1], d: 0 };
+    place(blueKey, "key", SPRITE_TEX.KEY_BLUE);
+
+    // --- blue door: far from the blue key ---
+    const z2FromKey = bfsDistances(tiles, z2, blueKey.x, blueKey.y, width);
+    let dx2 = startCol;
+    bestD = -1;
+    for (let dx = 1; dx <= width - 2; dx += 2) {
+        const d = z2FromKey.get((bandHeight + 2) * width + dx) ?? -1;
+        if (d > bestD) {
+            bestD = d;
+            dx2 = dx;
+        }
+    }
+    tiles[bandHeight]![dx2] = TILE.DOOR_BLUE;
+    doors.push({ x: dx2, y: bandHeight, tile: TILE.DOOR_BLUE });
+    tiles[bandHeight - 1]![dx2] = TILE.FLOOR;
+    tiles[bandHeight + 1]![dx2] = TILE.FLOOR;
+
+    // --- zone 3: gold key on the farthest dead end from the blue door ---
+    const z3 = bands[0]!;
+    const z3Entry: [number, number] = [dx2, bandHeight - 2];
+    const z3Feat = analyzeBand(tiles, z3, width);
+    const z3Dist = bfsDistances(tiles, z3, z3Entry[0], z3Entry[1], width);
+    const goldKey =
+        z3Feat.deadEnds.find((e) => !occupied.has(key(e.x, e.y))) ??
+        { x: z3Entry[0], y: z3Entry[1], d: 0 };
+    place(goldKey, "key", SPRITE_TEX.KEY_GOLD);
+
+    // --- exit: farthest dead end from the gold key, gated by the gold door ---
+    const z3FromKey = bfsDistances(tiles, z3, goldKey.x, goldKey.y, width);
+    const exitSpot =
+        z3Feat.deadEnds.find(
+            (e) =>
+                !occupied.has(key(e.x, e.y)) &&
+                (z3FromKey.get(e.y * width + e.x) ?? 0) >= 6,
+        ) ??
+        z3Feat.deadEnds.find((e) => !occupied.has(key(e.x, e.y))) ??
+        null;
+
+    if (exitSpot) {
+        // its single open neighbour becomes the gold gate
+        const nb = DIRS.map(
+            ([dx, dy]) => ({ x: exitSpot.x + dx, y: exitSpot.y + dy }),
+        ).find((n) => tiles[n.y]![n.x] === TILE.FLOOR)!;
+        tiles[nb.y]![nb.x] = TILE.DOOR_GOLD;
+        doors.push({ x: nb.x, y: nb.y, tile: TILE.DOOR_GOLD });
+        tiles[exitSpot.y]![exitSpot.x] = TILE.EXIT;
+        place(exitSpot, "portal", SPRITE_TEX.PORTAL);
+    }
+
+    const zonesWithFeat: Array<[Band, ZoneFeatures, Map<number, number>]> = [
+        [z1, z1Feat, z1Dist],
+        [z2, z2Feat, z2Dist],
+        [z3, z3Feat, z3Dist],
+    ];
+
+    // --- hourglasses on mid-distance dead ends ---
+    const hgCandidates: Array<{ x: number; y: number }> = [];
+    for (const [band, feat, dist] of zonesWithFeat) {
+        const maxD = Math.max(...dist.values());
+        for (const e of feat.deadEnds) {
+            if (!occupied.has(key(e.x, e.y)) && e.d >= 8 && e.d <= maxD * 0.9) {
+                hgCandidates.push(e);
             }
-            occupied.add(key(x, y));
-        });
-
-        const { deadEnds, intersections } = analyzeWing(tiles, wing, grid);
-
-        // main prize on the farthest dead end
-        const prize = deadEnds[0] ?? { x: wing.entry[0], y: wing.entry[1], d: 0 };
-        if (wing.prize === "exit") {
-            tiles[prize.y]![prize.x] = TILE.EXIT;
-            items.push({
-                x: prize.x + 0.5,
-                y: prize.y + 0.5,
-                kind: "portal",
-                texId: SPRITE_TEX.PORTAL,
-            });
-        } else {
-            const texId =
-                wing.prize === "red"
-                    ? SPRITE_TEX.KEY_RED
-                    : wing.prize === "blue"
-                      ? SPRITE_TEX.KEY_BLUE
-                      : SPRITE_TEX.KEY_GOLD;
-            items.push({
-                x: prize.x + 0.5,
-                y: prize.y + 0.5,
-                kind: "key",
-                texId,
-            });
         }
-        occupied.add(key(prize.x, prize.y));
+    }
+    // pseudo-shuffle so different seeds pick different spots
+    hgCandidates.sort(() => rng() - 0.5);
+    for (const spot of hgCandidates) {
+        if (items.filter((i) => i.kind === "hourglass").length >= hourglassesWanted) break;
+        if (occupied.has(key(spot.x, spot.y))) continue;
+        place(spot, "hourglass", SPRITE_TEX.HOURGLASS);
+    }
 
-        // hourglass on the second-farthest dead end, if it's deep enough
-        const hg = deadEnds[1];
-        if (hg && hg.d >= 8) {
-            items.push({
-                x: hg.x + 0.5,
-                y: hg.y + 0.5,
-                kind: "hourglass",
-                texId: SPRITE_TEX.HOURGLASS,
-            });
-            occupied.add(key(hg.x, hg.y));
-        }
-
-        // lanterns mark the big intersections (mental anchors)
-        for (const spot of intersections) {
-            if (spot.d < 5 || items.length > 40) continue;
+    // --- lanterns at big intersections (mental anchors) ---
+    for (const [band, feat] of zonesWithFeat) {
+        let count = 0;
+        for (const spot of feat.intersections) {
+            if (count >= 2 || spot.d < 5) continue;
             if (occupied.has(key(spot.x, spot.y))) continue;
-            items.push({
-                x: spot.x + 0.5,
-                y: spot.y + 0.5,
-                kind: "lantern",
-                texId: wing.lanternTex,
-            });
-            occupied.add(key(spot.x, spot.y));
-            if (rng() < 0.5) break; // 1-2 per wing
+            place(spot, "lantern", band.zone === 1 ? SPRITE_TEX.LANTERN_RED
+                : band.zone === 2 ? SPRITE_TEX.LANTERN_BLUE : SPRITE_TEX.LANTERN_GOLD);
+            count++;
         }
     }
 
-    // a light sprinkle of torches along plain corridors
+    // --- a light sprinkle of torches ---
     let torches = 0;
-    for (const wing of wings) {
-        if (torches >= 18) break;
-        for (const cy of wing.ys) {
-            if (torches >= 18) break;
-            for (const cx of wing.xs) {
-                if (torches >= 18) break;
+    for (const [band] of zonesWithFeat) {
+        for (const cy of band.ys) {
+            if (torches >= 12) break;
+            for (let cx = 1; cx <= width - 2; cx++) {
+                if (torches >= 12) break;
                 if (tiles[cy]![cx] !== TILE.FLOOR) continue;
                 if (occupied.has(key(cx, cy))) continue;
-                if (rng() >= 0.045) continue;
-                items.push({
-                    x: cx + 0.5,
-                    y: cy + 0.5,
-                    kind: "torch",
-                    texId: SPRITE_TEX.TORCH,
-                });
-                occupied.add(key(cx, cy));
+                if (rng() >= 0.03) continue;
+                place({ x: cx, y: cy }, "torch", SPRITE_TEX.TORCH);
                 torches++;
             }
         }
     }
 
-        const start: MazeStart = {
-            x: N + 0.5,
-            y: N + 0.5,
-            dirX: -1, // facing the open west wing
-            dirY: 0,
-            planeX: 0,
-            planeY: -0.66,
-        };
-
-        return {
-            width: grid,
-            height: grid,
-            tiles,
-            zone,
-            start,
-            doors,
-            items,
-        };
-    }
+    return {
+        width,
+        height,
+        tiles,
+        zone,
+        start: {
+            x: startCell[0] + 0.5,
+            y: startCell[1] + 0.5,
+            dirX: 0, // facing the next zone up
+            dirY: -1,
+            planeX: 0.66,
+            planeY: 0,
+        },
+        doors,
+        items,
+    };
+}
