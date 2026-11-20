@@ -1,13 +1,20 @@
+export interface Sprite {
+    x: number;
+    y: number;
+}
+
 export class WorldMap {
     readonly TILE_SIZE = 10;
     readonly width: number;
     readonly height: number;
+    readonly sprites: Sprite[] = [];
     private tiles: number[][];
 
     constructor(width: number, height: number) {
         this.width = width;
         this.height = height;
         this.tiles = this.init(width, height);
+        this.initSprites();
     }
 
     init(width: number, height: number): number[][] {
@@ -21,6 +28,7 @@ export class WorldMap {
                     output[y]![x] = 1;
                 } else {
                     output[y]![x] = Math.random() < 0.8 ? 0 : 2;
+                    // output[y]![x] = 0;
                 }
             }
         }
@@ -30,6 +38,23 @@ export class WorldMap {
 
     getTile(x: number, y: number): number {
         return this.tiles[y]?.[x] ?? 1;
+    }
+
+    // Place torches at fixed spots, but only where the random map left floor
+    private initSprites() {
+        const candidates: Array<[number, number]> = [
+            [3.5, 3.5],
+            [12.5, 3.5],
+            [3.5, 12.5],
+            [12.5, 12.5],
+            [8.5, 8.5],
+        ];
+
+        for (const [x, y] of candidates) {
+            if (this.getTile(Math.floor(x), Math.floor(y)) === 0) {
+                this.sprites.push({ x, y });
+            }
+        }
     }
 }
 

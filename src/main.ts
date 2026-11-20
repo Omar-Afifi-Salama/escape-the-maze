@@ -13,6 +13,10 @@ window.addEventListener("keydown", (e) => {
             document.documentElement.requestFullscreen();
         }
     }
+
+    if (e.code === "KeyT" && !e.repeat) {
+        console.log(`render mode: ${renderer.toggleRenderMode()}`);
+    }
 });
 window.addEventListener("keyup", (e) => keys.delete(e.code));
 
@@ -36,8 +40,8 @@ function render(now: number) {
     strafe = 0;
     turn = 0;
 
-    if (keys.has("KeyW")) forward += 1;
-    if (keys.has("KeyS")) forward -= 1;
+    if (keys.has("KeyW") || keys.has("ArrowUp")) forward += 1;
+    if (keys.has("KeyS") || keys.has("ArrowDown")) forward -= 1;
 
     if (keys.has("KeyD")) strafe += 1;
     if (keys.has("KeyA")) strafe -= 1;
