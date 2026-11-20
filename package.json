@@ -1,0 +1,17 @@
+{
+    "name": "ray-casting-graphics-engine",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "build": "tsc && cp src/index.html dist/",
+        "watch": "tsc --watch",
+        "serve": "node scripts/serve.mjs",
+        "dev": "npm run build && npm run serve"
+    },
+    "keywords": [],
+    "type": "module",
+    "devDependencies": {
+        "typescript": "^7.0.2"
+    }
+}

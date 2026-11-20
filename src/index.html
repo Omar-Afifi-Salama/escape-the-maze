@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Raycasting Graphics Engine</title>
+        <script type="module" src="./main.js" defer></script>
+
+        <style>
+            body {
+                margin: 0;
+                background: #000;
+                display: grid;
+                place-items: center;
+                height: 100vh;
+                overflow: hidden;
+            }
+            canvas {
+                image-rendering: pixelated;
+                width: min(100vw, calc(100vh * 16 / 9));
+                height: min(100vh, calc(100vw * 9 / 16));
+            }
+        </style>
+    </head>
+    <body></body>
+</html>
