@@ -96,7 +96,7 @@ export class WorldMap {
 }
 
 export class Player {
-    private readonly movementSpeed = 3;
+    moveSpeed = 3.5; // tiles per second
 
     posX: number;
     posY: number;
@@ -116,12 +116,20 @@ export class Player {
         this.planeY = start?.planeY ?? 0.66; // 0.66 of 1 (dir) is 66 deg FOV
     }
 
+    // FOV in degrees: the camera plane is perpendicular to dir with
+    // length tan(fov / 2), so 2 * atan(len) = fov
+    setFov(fovDeg: number) {
+        const len = Math.tan((fovDeg / 2) * (Math.PI / 180));
+        this.planeX = -this.dirY * len;
+        this.planeY = this.dirX * len;
+    }
+
     move(forward: number, strafe: number, dt: number, worldMap: WorldMap) {
         const moveX = this.dirX * forward + -this.dirY * strafe;
         const moveY = this.dirY * forward + this.dirX * strafe;
 
-        let dx = moveX * this.movementSpeed * dt;
-        let dy = moveY * this.movementSpeed * dt;
+        let dx = moveX * this.moveSpeed * dt;
+        let dy = moveY * this.moveSpeed * dt;
 
         // moving in a diagonal reduces your speed by root(2)
         // so you don't move 44% faster by moving in a diagonal

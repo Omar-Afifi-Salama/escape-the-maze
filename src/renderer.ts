@@ -108,6 +108,15 @@ export class Renderer {
         return Renderer.MODES[this.mode]!;
     }
 
+    setRenderMode(mode: number): void {
+        const n = Renderer.MODES.length;
+        this.mode = ((Math.round(mode) % n) + n) % n;
+    }
+
+    getRenderMode(): number {
+        return this.mode;
+    }
+
     // Torchlight falloff: quadratic so nearby walls stay bright while distant
     // corridors plunge into darkness
     private getBrightness(distance: number): number {

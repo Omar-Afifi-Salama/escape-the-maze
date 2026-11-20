@@ -9,5 +9,23 @@ export const CONFIG = {
     PICKUP_DIST: 0.6,
     MAX_CRUMBS: 40,
     TENSION_TIME: 30,
-    BEST_KEY: "maze-escape-best",
+
+    // feel
+    MOVE_SPEED: 3.5, // tiles per second
+    TURN_SPEED: 3.0, // radians per second
+    FOV_MIN: 60,
+    FOV_MAX: 110,
+    FOV_DEFAULT: 80,
+
+    // hud
+    SHOW_MINIMAP: false,
 } as const;
+
+// per-difficulty maze + pacing parameters
+export const DIFFICULTIES = {
+    easy: { zoneCellsW: 11, zoneCellsH: 4, braid: 0.25, timeLimit: 360, viewDist: 16, hourglasses: 4 },
+    medium: { zoneCellsW: 15, zoneCellsH: 5, braid: 0.12, timeLimit: 300, viewDist: 14, hourglasses: 3 },
+    hard: { zoneCellsW: 19, zoneCellsH: 6, braid: 0.04, timeLimit: 300, viewDist: 11, hourglasses: 2 },
+} as const;
+
+export type Difficulty = keyof typeof DIFFICULTIES;

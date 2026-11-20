@@ -6,6 +6,7 @@ import { SPRITE_TEX, TILE } from "./maze.js";
 import { HUD } from "./hud.js";
 import { Sprite } from "./sprite.js";
 import { CONFIG } from "./config.js";
+import { loadSettings, saveSettings, type Settings } from "./settings.js";
 
 export type KeyColor = "red" | "blue" | "gold";
 export type GameState = "title" | "playing" | "won" | "lost";
@@ -23,6 +24,10 @@ export class Game {
     hint = "";
     bestLeft: number | null = null;
 
+    settings: Settings = loadSettings();
+    gameMode: "timed" | "untimed" = "timed";
+    difficulty: "easy" | "medium" | "hard" = "medium";
+
     private screen: Screen;
     private hud: HUD;
 
@@ -30,10 +35,17 @@ export class Game {
         this.screen = screen;
         this.hud = new HUD(screen);
 
-        const stored = localStorage.getItem(CONFIG.BEST_KEY);
-        if (stored !== null) this.bestLeft = Number(stored);
-
+        this.loadBest();
         this.newRun(Math.floor(Math.random() * 1e9));
+    }
+
+    private bestKey(): string {
+        return `maze-escape-best-${this.gameMode}-${this.difficulty}`;
+    }
+
+    private loadBest() {
+        const stored = localStorage.getItem(this.bestKey());
+        this.bestLeft = stored === null ? null : Number(stored);
     }
 
     newRun(seed: number) {
@@ -41,7 +53,9 @@ export class Game {
         const maze = generateMaze(seed);
         this.world = new WorldMap(maze);
         this.player = new Player(maze.start);
+        this.player.setFov(this.settings.fovDeg);
         this.renderer = new Renderer(this.screen, this.world, this.player);
+        this.renderer.setRenderMode(this.settings.renderMode);
         this.timeLeft = CONFIG.TIME_LIMIT;
         this.inventory.clear();
         this.hint = "";
@@ -97,7 +111,7 @@ export class Game {
         if (keys.has("ArrowLeft")) turn -= 1;
 
         this.player.move(forward, strafe, dt, this.world);
-        this.player.rotate(turn * 2.5 * dt);
+        this.player.rotate(turn * CONFIG.TURN_SPEED * dt);
 
         // fog of war
         this.world.reveal(this.player.posX, this.player.posY);
@@ -142,7 +156,7 @@ export class Game {
             this.state = "won";
             if (this.bestLeft === null || this.timeLeft > this.bestLeft) {
                 this.bestLeft = this.timeLeft;
-                localStorage.setItem(CONFIG.BEST_KEY, String(this.timeLeft));
+                localStorage.setItem(this.bestKey(), String(this.timeLeft));
             }
             return;
         }
