@@ -485,6 +485,63 @@ export class Renderer {
         }
     }
 
+    // glow halo per sprite kind: additive light around items so they read
+    // from far down a corridor
+    private glowFor(texId: number): { r: number; g: number; b: number; strength: number } | null {
+        switch (texId) {
+            case SPRITE_TEX.KEY_RED: return { r: 255, g: 90, b: 90, strength: 1.0 };
+            case SPRITE_TEX.KEY_BLUE: return { r: 90, g: 130, b: 255, strength: 1.0 };
+            case SPRITE_TEX.KEY_GOLD: return { r: 255, g: 210, b: 80, strength: 1.0 };
+            case SPRITE_TEX.HOURGLASS: return { r: 255, g: 200, b: 90, strength: 0.9 };
+            case SPRITE_TEX.LANTERN_RED: return { r: 255, g: 110, b: 80, strength: 0.8 };
+            case SPRITE_TEX.LANTERN_BLUE: return { r: 90, g: 140, b: 255, strength: 0.8 };
+            case SPRITE_TEX.LANTERN_GREEN: return { r: 110, g: 235, b: 120, strength: 0.8 };
+            case SPRITE_TEX.LANTERN_GOLD: return { r: 255, g: 210, b: 70, strength: 0.8 };
+            case SPRITE_TEX.PORTAL: return { r: 80, g: 255, b: 140, strength: 0.9 };
+            case SPRITE_TEX.CRUMB: return { r: 255, g: 190, b: 90, strength: 0.55 };
+            case SPRITE_TEX.TORCH: return { r: 255, g: 160, b: 60, strength: 0.35 };
+            default: return null;
+        }
+    }
+
+    // additive halo around a sprite, occluded per-stripe by the z-buffer
+    private drawGlow(
+        cx: number,
+        cy: number,
+        radius: number,
+        glow: { r: number; g: number; b: number },
+        intensity: number,
+        transformY: number,
+    ) {
+        const pixels = this.screen.pixels;
+        const w = this.screen.width;
+        const h = this.screen.height;
+
+        const x0 = Math.max(0, Math.floor(cx - radius));
+        const x1 = Math.min(w, Math.ceil(cx + radius));
+        const y0 = Math.max(0, Math.floor(cy - radius));
+        const y1 = Math.min(h, Math.ceil(cy + radius));
+
+        for (let x = x0; x < x1; x++) {
+            // hidden behind a wall — no glow
+            if (transformY >= (this.zBuffer[x] ?? Infinity)) continue;
+
+            for (let y = y0; y < y1; y++) {
+                const d = Math.hypot(x - cx, y - cy);
+                if (d >= radius) continue;
+
+                const fall = 1 - d / radius;
+                const add = intensity * fall * fall;
+
+                const p = pixels[y * w + x]!;
+                const r = Math.min(255, (p & 0xff) + glow.r * add) | 0;
+                const g = Math.min(255, ((p >>> 8) & 0xff) + glow.g * add) | 0;
+                const b = Math.min(255, ((p >>> 16) & 0xff) + glow.b * add) | 0;
+                pixels[y * w + x] = (0xff << 24) | (b << 16) | (g << 8) | r;
+            }
+        }
+    }
+
     drawSprites() {
         // far to near so closer sprites overdraw distant ones
         const sprites = this.worldMap.sprites
@@ -501,6 +558,7 @@ export class Renderer {
         const pixels = this.screen.pixels;
         const w = this.screen.width;
         const h = this.screen.height;
+        const now = performance.now() / 1000;
 
         for (const { sprite } of sprites) {
             const spriteX = sprite.x - this.player.posX;
@@ -511,7 +569,15 @@ export class Renderer {
             const transformY = invDet * (-this.player.planeY * spriteX + this.player.planeX * spriteY);
             if (transformY <= 0.15) continue; // behind or on top of the camera
 
-            const brightness = this.mode === 0 ? this.getBrightness(transformY) : 1;
+            const glow = this.glowFor(sprite.textureId);
+
+            // glowing items are lit by their own halo: floor their brightness
+            const brightness =
+                this.mode === 0
+                    ? glow
+                        ? Math.max(0.75, this.getBrightness(transformY))
+                        : this.getBrightness(transformY)
+                    : 1;
             if (brightness <= 0) continue;
 
             const tex = this.spriteTex.get(sprite.textureId) ?? this.torchTex;
@@ -522,7 +588,9 @@ export class Renderer {
 
             const centerX = (w / 2) * (1 + transformX / transformY);
             // vOffset: -1 = top of wall, 0 = center, 1 = sitting on the floor
-            const centerY = h / 2 + (fullH / 2) * sprite.vOffset;
+            // keys bob gently
+            const bob = sprite.kind === "key" ? 0.05 * Math.sin(now * 2 + sprite.x * 5) : 0;
+            const centerY = h / 2 + (fullH / 2) * (sprite.vOffset + bob);
             const vTop = centerY - spriteH / 2;
             const hLeft = centerX - spriteW / 2;
 
@@ -546,6 +614,24 @@ export class Renderer {
                     // clamped coords — write directly to the buffer
                     pixels[y * w + stripe] = this.applyFog(color, brightness);
                 }
+            }
+
+            // halo behind/around the sprite
+            if (glow) {
+                const pulse = 0.85 + 0.15 * Math.sin(now * 2.5 + sprite.x * 7.3);
+                const intensity =
+                    glow.strength * pulse *
+                    (this.mode === 0
+                        ? Math.max(0.3, this.getBrightness(transformY))
+                        : 0.7);
+                this.drawGlow(
+                    centerX,
+                    centerY,
+                    Math.max(6, spriteH * 0.85),
+                    glow,
+                    intensity,
+                    transformY,
+                );
             }
         }
     }
