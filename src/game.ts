@@ -30,6 +30,12 @@ export class Game {
     hint = "";
     bestLeft: number | null = null;
 
+    // unlock feedback
+    flashColor: string | null = null;
+    flashT = 0;
+    toast = "";
+    toastT = 0;
+
     private screen: Screen;
     private hud: HUD;
     private menu: Menu;
@@ -255,20 +261,31 @@ export class Game {
             }
         }
 
-        // doors: open when near with the right key, else hint
+        // doors: unlock instantly when near with the right key, else hint
         this.hint = "";
         for (const door of this.world.doors.values()) {
+            if (this.world.getTile(door.x, door.y) !== door.tile) continue; // already open
+
             const dx = door.x + 0.5 - this.player.posX;
             const dy = door.y + 0.5 - this.player.posY;
             if (dx * dx + dy * dy > CONFIG.DOOR_OPEN_DIST ** 2) continue;
 
             const needed = doorColorOf(door.tile);
             if (this.inventory.has(needed)) {
-                door.open = Math.min(1, door.open + dt / CONFIG.DOOR_OPEN_TIME);
-            } else if (door.open < 0.9 && this.hint === "") {
+                this.world.setTile(door.x, door.y, TILE.FLOOR);
+                this.flashColor =
+                    needed === "red" ? "#e04848" : needed === "blue" ? "#4868e0" : "#e0be32";
+                this.flashT = 0.4;
+                this.toast = `${needed[0]!.toUpperCase()}${needed.slice(1)} door unlocked`;
+                this.toastT = 2.2;
+            } else if (this.hint === "") {
                 this.hint = `Locked — needs the ${needed} key`;
             }
         }
+
+        // unlock feedback decay
+        if (this.flashT > 0) this.flashT = Math.max(0, this.flashT - dt);
+        if (this.toastT > 0) this.toastT = Math.max(0, this.toastT - dt);
 
         // exit
         const tx = Math.floor(this.player.posX);

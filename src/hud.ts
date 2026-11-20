@@ -131,6 +131,22 @@ export class HUD {
             ctx.fillText(game.hint, w / 2, this.height - 34);
         }
 
+        // unlock toast + colored flash
+        if (game.toastT > 0) {
+            ctx.globalAlpha = Math.min(1, game.toastT);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 24px monospace";
+            ctx.textAlign = "center";
+            ctx.fillText(game.toast, w / 2, 70);
+            ctx.globalAlpha = 1;
+        }
+        if (game.flashT > 0 && game.flashColor) {
+            ctx.globalAlpha = (game.flashT / 0.4) * 0.3;
+            ctx.fillStyle = game.flashColor;
+            ctx.fillRect(0, 0, w, this.height);
+            ctx.globalAlpha = 1;
+        }
+
         if (mapOpen) this.drawMapOverlay(game.world, game.player);
 
         if (game.state === "won" || game.state === "lost") {

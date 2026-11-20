@@ -6,7 +6,6 @@ export interface DoorState {
     x: number;
     y: number;
     tile: number;
-    open: number; // 0 closed .. 1 fully open
 }
 
 export class WorldMap {
@@ -31,7 +30,6 @@ export class WorldMap {
                 x: door.x,
                 y: door.y,
                 tile: door.tile,
-                open: 0,
             });
         }
 
@@ -53,16 +51,10 @@ export class WorldMap {
         return tile >= TILE.DOOR_RED && tile <= TILE.DOOR_GOLD;
     }
 
-    doorOpenAt(x: number, y: number): number {
-        return this.doors.get(y * this.width + x)?.open ?? 0;
-    }
-
-    // doors stay solid until they are almost fully open
+    // doors are solid full blocks until they are unlocked (tile removed)
     isSolid(x: number, y: number): boolean {
         const tile = this.getTile(x, y);
-        if (tile === TILE.FLOOR || tile === TILE.EXIT) return false;
-        if (WorldMap.isDoorTile(tile)) return this.doorOpenAt(x, y) < 0.9;
-        return true;
+        return tile !== TILE.FLOOR && tile !== TILE.EXIT;
     }
 
     // mark the ground around the player as explored (fog of war)

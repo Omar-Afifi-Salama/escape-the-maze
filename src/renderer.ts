@@ -237,8 +237,6 @@ export class Renderer {
         let hit = 0;
         let side = 0;
         let perpWallDist = 30;
-        let doorShift = 0;
-        let doorWallX = -1;
         let steps = 0;
 
         while (steps++ < 128) {
@@ -255,29 +253,6 @@ export class Renderer {
             const tile = this.worldMap.getTile(mapX, mapY);
             if (tile === TILE.FLOOR || tile === TILE.EXIT) continue;
 
-            if (WorldMap.isDoorTile(tile)) {
-                // the door plane sits half a tile into the cell; rays through
-                // the slid-open gap keep going
-                const open = this.worldMap.doorOpenAt(mapX, mapY);
-                const dist =
-                    side === 0
-                        ? sideDistX - deltaDistX / 2
-                        : sideDistY - deltaDistY / 2;
-                let frac =
-                    side === 0
-                        ? this.player.posY + rayDirY * dist
-                        : this.player.posX + rayDirX * dist;
-                frac -= Math.floor(frac);
-
-                if (frac < open) continue;
-
-                perpWallDist = dist;
-                hit = tile;
-                doorShift = open;
-                doorWallX = frac;
-                break;
-            }
-
             hit = tile;
             perpWallDist =
                 side === 0 ? sideDistX - deltaDistX : sideDistY - deltaDistY;
@@ -289,7 +264,7 @@ export class Renderer {
         // seen walls appear on the minimap
         if (perpWallDist <= 6) this.worldMap.markSeen(mapX, mapY);
 
-        return { rayDirX, rayDirY, perpWallDist, side, hit, doorShift, doorWallX };
+        return { rayDirX, rayDirY, perpWallDist, side, hit };
     }
 
     // classic flat look: two-tone background + per-tile solid colors
@@ -386,31 +361,24 @@ export class Renderer {
         }
 
         for (let x = 0; x < w; x++) {
-            const { rayDirX, rayDirY, perpWallDist, side, hit, doorShift, doorWallX } =
-                this.castRay(x);
+            const { rayDirX, rayDirY, perpWallDist, side, hit } = this.castRay(x);
 
             const lineHeight = h / perpWallDist;
 
             const drawStart = Math.max(0, Math.floor(-lineHeight / 2 + h / 2));
             const drawEnd = Math.min(h, Math.floor(lineHeight / 2 + h / 2));
 
-            let texX: number;
-            if (doorWallX >= 0) {
-                // doors slide sideways: sample the visible part of the texture
-                texX = Math.floor((doorWallX - doorShift) * TEX_SIZE) & 63;
-            } else {
-                // where along the wall face (0..1) the ray hit
-                let wallX =
-                    side === 0
-                        ? this.player.posY + perpWallDist * rayDirY
-                        : this.player.posX + perpWallDist * rayDirX;
-                wallX -= Math.floor(wallX);
+            // where along the wall face (0..1) the ray hit
+            let wallX =
+                side === 0
+                    ? this.player.posY + perpWallDist * rayDirY
+                    : this.player.posX + perpWallDist * rayDirX;
+            wallX -= Math.floor(wallX);
 
-                texX = Math.floor(wallX * TEX_SIZE);
-                // keep the texture oriented consistently on each face
-                if (side === 0 && rayDirX > 0) texX = TEX_SIZE - 1 - texX;
-                if (side === 1 && rayDirY < 0) texX = TEX_SIZE - 1 - texX;
-            }
+            let texX = Math.floor(wallX * TEX_SIZE);
+            // keep the texture oriented consistently on each face
+            if (side === 0 && rayDirX > 0) texX = TEX_SIZE - 1 - texX;
+            if (side === 1 && rayDirY < 0) texX = TEX_SIZE - 1 - texX;
 
             const wallTex = this.wallTexFor(hit);
 
