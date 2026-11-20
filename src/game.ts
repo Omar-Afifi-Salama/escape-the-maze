@@ -4,49 +4,50 @@ import { Player, WorldMap } from "./world.js";
 import { generateMaze } from "./maze.js";
 import { SPRITE_TEX, TILE } from "./maze.js";
 import { HUD } from "./hud.js";
+import { Menu } from "./menu.js";
 import { Sprite } from "./sprite.js";
 import { CONFIG } from "./config.js";
 import { loadSettings, saveSettings, type Settings } from "./settings.js";
 
 export type KeyColor = "red" | "blue" | "gold";
-export type GameState = "title" | "playing" | "won" | "lost";
+export type GameState = "menu" | "playing" | "paused" | "won" | "lost";
 
 export class Game {
-    state: GameState = "title";
+    state: GameState = "menu";
     seed = 0;
 
     world!: WorldMap;
     player!: Player;
     renderer!: Renderer;
 
+    settings: Settings = loadSettings();
+    gameMode: "timed" | "untimed" = "timed";
+    difficulty: "easy" | "medium" | "hard" = "medium";
+
     timeLeft: number = CONFIG.TIME_LIMIT;
     inventory = new Set<KeyColor>();
     hint = "";
     bestLeft: number | null = null;
 
-    settings: Settings = loadSettings();
-    gameMode: "timed" | "untimed" = "timed";
-    difficulty: "easy" | "medium" | "hard" = "medium";
-
     private screen: Screen;
     private hud: HUD;
+    private menu: Menu;
+    // where "back" goes from settings/controls
+    private menuReturn: "main" | "pause" = "main";
 
     constructor(screen: Screen) {
         this.screen = screen;
         this.hud = new HUD(screen);
+        this.menu = new Menu();
+        this.menu.onAction = (action, value) => this.onMenuAction(action, value);
 
         this.loadBest();
         this.newRun(Math.floor(Math.random() * 1e9));
+        this.state = "menu";
+        this.menu.showMain(this.mainMenuState());
     }
 
-    private bestKey(): string {
-        return `maze-escape-best-${this.gameMode}-${this.difficulty}`;
-    }
-
-    private loadBest() {
-        const stored = localStorage.getItem(this.bestKey());
-        this.bestLeft = stored === null ? null : Number(stored);
-    }
+    // ---- run lifecycle ----
 
     newRun(seed: number) {
         this.seed = seed;
@@ -62,16 +63,124 @@ export class Game {
         this.state = "playing";
     }
 
-    onKeyDown(code: string) {
-        if (this.state !== "playing") {
-            if (code === "Enter") this.newRun(Math.floor(Math.random() * 1e9));
-            return;
-        }
-
-        if (code === "KeyR") this.newRun(Math.floor(Math.random() * 1e9));
-        if (code === "KeyE") this.dropCrumb();
-        if (code === "KeyT") console.log(`render mode: ${this.renderer.toggleRenderMode()}`);
+    pause() {
+        if (this.state !== "playing") return;
+        this.state = "paused";
+        this.menuReturn = "pause";
+        this.menu.showPause();
     }
+
+    resume() {
+        if (this.state !== "paused") return;
+        this.state = "playing";
+        this.menu.hide();
+    }
+
+    quitToMenu() {
+        this.state = "menu";
+        this.menuReturn = "main";
+        this.menu.showMain(this.mainMenuState());
+    }
+
+    private mainMenuState() {
+        return {
+            mode: this.gameMode,
+            difficulty: this.difficulty,
+            bestLine: this.bestLine(),
+        };
+    }
+
+    // ---- menu actions ----
+
+    private onMenuAction(action: string, value?: string) {
+        switch (action) {
+            case "play": {
+                this.newRun(Math.floor(Math.random() * 1e9));
+                this.menu.hide();
+                break;
+            }
+            case "mode":
+                this.gameMode = this.gameMode === "timed" ? "untimed" : "timed";
+                this.loadBest();
+                this.menu.showMain(this.mainMenuState());
+                break;
+            case "difficulty": {
+                const order = ["easy", "medium", "hard"] as const;
+                this.difficulty =
+                    order[(order.indexOf(this.difficulty) + 1) % order.length]!;
+                this.loadBest();
+                this.menu.showMain(this.mainMenuState());
+                break;
+            }
+            case "open-settings":
+                this.menu.showSettings(this.settings);
+                break;
+            case "open-controls":
+                this.menu.showControls();
+                break;
+            case "back":
+                if (this.menuReturn === "pause") this.menu.showPause();
+                else this.menu.showMain(this.mainMenuState());
+                break;
+            case "fov": {
+                this.settings.fovDeg = Number(value);
+                saveSettings(this.settings);
+                this.player?.setFov(this.settings.fovDeg);
+                break;
+            }
+            case "renderMode": {
+                this.settings.renderMode = Number(value);
+                saveSettings(this.settings);
+                this.renderer?.setRenderMode(this.settings.renderMode);
+                break;
+            }
+            case "resume":
+                this.resume();
+                break;
+            case "restart":
+                this.newRun(this.seed);
+                this.menu.hide();
+                break;
+            case "new":
+                this.newRun(Math.floor(Math.random() * 1e9));
+                this.menu.hide();
+                break;
+            case "quit":
+                this.quitToMenu();
+                break;
+        }
+    }
+
+    // ---- input ----
+
+    onKeyDown(code: string) {
+        if (this.state === "playing") {
+            if (code === "Escape" || code === "KeyP") {
+                this.pause();
+                return;
+            }
+            if (code === "KeyR") {
+                this.newRun(this.seed);
+                return;
+            }
+            if (code === "KeyE") this.dropCrumb();
+            if (code === "KeyT") {
+                console.log(`render mode: ${this.renderer.toggleRenderMode()}`);
+                this.settings.renderMode = this.renderer.getRenderMode();
+                saveSettings(this.settings);
+            }
+        } else if (this.state === "paused") {
+            if (code === "Escape" || code === "KeyP") this.resume();
+        } else if (this.state === "menu") {
+            if (code === "Enter") this.onMenuAction("play");
+        } else {
+            // won / lost
+            if (code === "Enter") this.onMenuAction("new");
+            else if (code === "Escape") this.quitToMenu();
+        }
+    }
+
+    // ---- gameplay ----
 
     // drop a glowing breadcrumb at the player's feet (E key)
     private dropCrumb() {
@@ -170,19 +279,44 @@ export class Game {
     }
 
     render(mapOpen: boolean) {
-        if (this.state === "title") {
-            this.screen.pixels.fill(0xff000000);
+        if (this.state === "menu") {
+            // static maze backdrop behind the menu overlay
+            this.renderer.renderScene();
             this.screen.present();
-            this.hud.drawTitle(this.bestLeft);
             return;
         }
 
         this.renderer.renderScene();
-        this.renderer.drawMinimap();
+        if (CONFIG.SHOW_MINIMAP) this.renderer.drawMinimap();
         this.screen.present();
 
         this.hud.draw(this, mapOpen);
     }
+
+    // ---- best times ----
+
+    private bestKey(): string {
+        return `maze-escape-best-${this.gameMode}-${this.difficulty}`;
+    }
+
+    private loadBest() {
+        const stored = localStorage.getItem(this.bestKey());
+        this.bestLeft = stored === null ? null : Number(stored);
+    }
+
+    bestLine(): string | null {
+        if (this.bestLeft === null) return null;
+        return this.gameMode === "timed"
+            ? `best escape (${this.difficulty}): ${fmtTime(this.bestLeft)} left`
+            : `best run (${this.difficulty}): ${fmtTime(this.bestLeft)}`;
+    }
+}
+
+function fmtTime(t: number): string {
+    const total = Math.max(0, t);
+    const mm = Math.floor(total / 60);
+    const ss = Math.floor(total % 60);
+    return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
 }
 
 function keyColorOf(textureId: number): KeyColor {

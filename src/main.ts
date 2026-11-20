@@ -8,8 +8,8 @@ const game = new Game(screen);
 window.addEventListener("keydown", (e) => {
     keys.add(e.code);
 
-    // keep arrows/space from scrolling the page
-    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+    // keep arrows/space/tab from scrolling or moving focus
+    if (["Space", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
         e.preventDefault();
     }
 
@@ -25,6 +25,11 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", (e) => keys.delete(e.code));
 
+// leaving fullscreen pauses the run (browsers may swallow the Esc keydown)
+document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement) game.pause();
+});
+
 let lastTime = performance.now();
 
 function loop(now: number) {
@@ -32,7 +37,7 @@ function loop(now: number) {
     lastTime = now;
 
     game.update(dt, keys);
-    game.render(keys.has("KeyM"));
+    game.render(keys.has("KeyM") || keys.has("Tab"));
 
     requestAnimationFrame(loop);
 }

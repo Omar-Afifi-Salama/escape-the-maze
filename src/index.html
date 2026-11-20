@@ -20,7 +20,109 @@
                 width: min(100vw, calc(100vh * 16 / 9));
                 height: min(100vh, calc(100vw * 9 / 16));
             }
+
+            /* menu overlay */
+            #menu-root {
+                position: fixed;
+                inset: 0;
+                z-index: 10;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: "Courier New", monospace;
+            }
+            #menu-root.hidden {
+                display: none;
+            }
+            .menu-overlay {
+                position: absolute;
+                inset: 0;
+                background: rgba(6, 8, 14, 0.85);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+            }
+            .menu-title {
+                color: #fff;
+                font-size: 46px;
+                font-weight: bold;
+                letter-spacing: 4px;
+                margin: 0 0 10px;
+            }
+            .menu-sub {
+                color: #9aa4b8;
+                font-size: 17px;
+                margin: 0 0 12px;
+                max-width: 640px;
+                text-align: center;
+                line-height: 1.5;
+            }
+            .menu-btn {
+                background: #161d2c;
+                color: #dde3ef;
+                border: 1px solid #3a4560;
+                padding: 9px 24px;
+                font-family: "Courier New", monospace;
+                font-size: 17px;
+                cursor: pointer;
+                min-width: 300px;
+                text-align: center;
+            }
+            .menu-btn:hover {
+                background: #232e46;
+                border-color: #5a6a94;
+            }
+            .menu-btn.small {
+                min-width: 0;
+                font-size: 15px;
+                padding: 7px 18px;
+            }
+            .menu-row {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                color: #dde3ef;
+                font-size: 17px;
+            }
+            .menu-row input[type="range"] {
+                width: 240px;
+                accent-color: #e0be32;
+            }
+            .menu-row select {
+                font-family: "Courier New", monospace;
+                font-size: 16px;
+                background: #161d2c;
+                color: #dde3ef;
+                border: 1px solid #3a4560;
+                padding: 6px;
+            }
+            .menu-best {
+                color: #e0be32;
+                font-size: 18px;
+                font-weight: bold;
+                margin-top: 6px;
+            }
+            .menu-controls {
+                color: #dde3ef;
+                font-size: 17px;
+                line-height: 2;
+                text-align: left;
+            }
+            .menu-controls b {
+                color: #e0be32;
+                display: inline-block;
+                min-width: 170px;
+            }
+            .menu-hint {
+                color: #6b7488;
+                font-size: 14px;
+                margin-top: 10px;
+            }
         </style>
     </head>
-    <body></body>
+    <body>
+        <div id="menu-root" class="hidden"></div>
+    </body>
 </html>
