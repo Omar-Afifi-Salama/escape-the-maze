@@ -162,10 +162,12 @@ export class HUD {
         const world = game.world;
         const player = game.player;
         const { ctx, width: w, height: h } = this;
-        const ts = Math.floor(Math.min(w / world.width, h / world.height));
-        const size = world.width * ts;
-        const ox = Math.floor((w - size) / 2);
-        const oy = Math.floor((h - size) / 2);
+        // fit the whole grid inside the window, then center both axes
+        const ts = Math.max(1, Math.floor(Math.min(w / world.width, h / world.height)));
+        const mapW = world.width * ts;
+        const mapH = world.height * ts;
+        const ox = Math.floor((w - mapW) / 2);
+        const oy = Math.floor((h - mapH) / 2);
 
         ctx.fillStyle = "rgba(0,0,0,0.78)";
         ctx.fillRect(0, 0, w, h);
@@ -198,7 +200,7 @@ export class HUD {
         const dirAngle = Math.atan2(player.dirY, player.dirX);
         ctx.save();
         ctx.beginPath();
-        ctx.rect(ox, oy, size, size);
+        ctx.rect(ox, oy, mapW, mapH);
         ctx.clip();
 
         ctx.beginPath();
@@ -228,7 +230,7 @@ export class HUD {
         ctx.restore();
 
         ctx.strokeStyle = "#444444";
-        ctx.strokeRect(ox - 1, oy - 1, size + 2, size + 2);
+        ctx.strokeRect(ox - 1, oy - 1, mapW + 2, mapH + 2);
     }
 
     private drawEnd(game: Game) {
