@@ -1,60 +1,97 @@
-export interface Sprite {
+import { Sprite } from "./sprite.js";
+import type { MazeData } from "./maze.js";
+import { TILE } from "./maze.js";
+
+export interface DoorState {
     x: number;
     y: number;
+    tile: number;
+    open: number; // 0 closed .. 1 fully open
 }
 
 export class WorldMap {
     readonly TILE_SIZE = 10;
     readonly width: number;
     readonly height: number;
+    readonly zone: Uint8Array; // wing id per tile, for minimap coloring
+    readonly visited: Uint8Array; // 0 unknown, 1 floor visited, 2 wall seen
     readonly sprites: Sprite[] = [];
+    readonly doors = new Map<number, DoorState>();
     private tiles: number[][];
 
-    constructor(width: number, height: number) {
-        this.width = width;
-        this.height = height;
-        this.tiles = this.init(width, height);
-        this.initSprites();
-    }
+    constructor(maze: MazeData) {
+        this.width = maze.width;
+        this.height = maze.height;
+        this.tiles = maze.tiles;
+        this.zone = maze.zone;
+        this.visited = new Uint8Array(maze.width * maze.height);
 
-    init(width: number, height: number): number[][] {
-        const output: number[][] = [];
-
-        for (let y = 0; y < height; y++) {
-            output.push([]);
-
-            for (let x = 0; x < width; x++) {
-                if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
-                    output[y]![x] = 1;
-                } else {
-                    output[y]![x] = Math.random() < 0.8 ? 0 : 2;
-                    // output[y]![x] = 0;
-                }
-            }
+        for (const door of maze.doors) {
+            this.doors.set(door.y * maze.width + door.x, {
+                x: door.x,
+                y: door.y,
+                tile: door.tile,
+                open: 0,
+            });
         }
 
-        return output;
+        for (const item of maze.items) {
+            this.sprites.push(new Sprite(item.x, item.y, item.texId, item.kind));
+        }
     }
 
     getTile(x: number, y: number): number {
-        return this.tiles[y]?.[x] ?? 1;
+        return this.tiles[y]?.[x] ?? TILE.BORDER;
     }
 
-    // Place torches at fixed spots, but only where the random map left floor
-    private initSprites() {
-        const candidates: Array<[number, number]> = [
-            [3.5, 3.5],
-            [12.5, 3.5],
-            [3.5, 12.5],
-            [12.5, 12.5],
-            [8.5, 8.5],
-        ];
+    setTile(x: number, y: number, tile: number): void {
+        const row = this.tiles[y];
+        if (row) row[x] = tile;
+    }
 
-        for (const [x, y] of candidates) {
-            if (this.getTile(Math.floor(x), Math.floor(y)) === 0) {
-                this.sprites.push({ x, y });
+    static isDoorTile(tile: number): boolean {
+        return tile >= TILE.DOOR_RED && tile <= TILE.DOOR_GOLD;
+    }
+
+    doorOpenAt(x: number, y: number): number {
+        return this.doors.get(y * this.width + x)?.open ?? 0;
+    }
+
+    // doors stay solid until they are almost fully open
+    isSolid(x: number, y: number): boolean {
+        const tile = this.getTile(x, y);
+        if (tile === TILE.FLOOR || tile === TILE.EXIT) return false;
+        if (WorldMap.isDoorTile(tile)) return this.doorOpenAt(x, y) < 0.9;
+        return true;
+    }
+
+    // mark the ground around the player as explored (fog of war)
+    reveal(px: number, py: number, radius = 2.5): void {
+        const cx = Math.floor(px);
+        const cy = Math.floor(py);
+
+        for (let dy = -3; dy <= 3; dy++) {
+            for (let dx = -3; dx <= 3; dx++) {
+                if (dx * dx + dy * dy > radius * radius) continue;
+                const x = cx + dx;
+                const y = cy + dy;
+                const tile = this.getTile(x, y);
+                const i = y * this.width + x;
+
+                if (tile === TILE.FLOOR || tile === TILE.EXIT) {
+                    this.visited[i] = 1;
+                } else {
+                    // nearby walls count as "seen" so the map reads as a maze
+                    if (this.visited[i] === 0) this.visited[i] = 2;
+                }
             }
         }
+    }
+
+    // a ray hit this wall or door, so it has been seen
+    markSeen(x: number, y: number): void {
+        const i = y * this.width + x;
+        if (this.visited[i] === 0) this.visited[i] = 2;
     }
 }
 
@@ -68,13 +105,15 @@ export class Player {
     planeX: number;
     planeY: number;
 
-    constructor() {
-        this.posX = 2.5;
-        this.posY = 2.5;
-        this.dirX = 1; // facing along the x-axis (to the right)
-        this.dirY = 0;
-        this.planeX = 0;
-        this.planeY = 0.66; // 0.66 of 1 (dir) is 66 deg FOV
+    constructor(
+        start?: { x: number; y: number; dirX: number; dirY: number; planeX: number; planeY: number },
+    ) {
+        this.posX = start?.x ?? 2.5;
+        this.posY = start?.y ?? 2.5;
+        this.dirX = start?.dirX ?? 1; // facing along the x-axis (to the right)
+        this.dirY = start?.dirY ?? 0;
+        this.planeX = start?.planeX ?? 0;
+        this.planeY = start?.planeY ?? 0.66; // 0.66 of 1 (dir) is 66 deg FOV
     }
 
     move(forward: number, strafe: number, dt: number, worldMap: WorldMap) {
@@ -97,11 +136,11 @@ export class Player {
         const checkX = Math.floor(this.posX);
         const checkY = Math.floor(this.posY);
 
-        if (worldMap.getTile(lookAheadX, checkY) === 0) {
+        if (!worldMap.isSolid(lookAheadX, checkY)) {
             this.posX += dx;
         }
 
-        if (worldMap.getTile(checkX, lookAheadY) === 0) {
+        if (!worldMap.isSolid(checkX, lookAheadY)) {
             this.posY += dy;
         }
     }

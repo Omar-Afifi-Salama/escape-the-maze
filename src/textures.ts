@@ -103,6 +103,133 @@ export function torch(): Uint32Array {
     });
 }
 
+// Recolor a packed ABGR texture by multiplying each channel.
+export function tint(
+    tex: Uint32Array,
+    fr: number,
+    fg: number,
+    fb: number,
+): Uint32Array {
+    const out = new Uint32Array(tex.length);
+    for (let i = 0; i < tex.length; i++) {
+        const c = tex[i]!;
+        if (c >>> 24 === 0) continue; // keep transparent pixels
+
+        const cl = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+        const r = cl((c & 0xff) * fr);
+        const g = cl(((c >>> 8) & 0xff) * fg);
+        const b = cl(((c >>> 16) & 0xff) * fb);
+        out[i] = (0xff << 24) | (b << 16) | (g << 8) | r;
+    }
+    return out;
+}
+
+// Mossy stone: green blotches over a stone base
+export function mossWall(): Uint32Array {
+    return makeTexture((x, y) => {
+        const blotch = Math.sin(x * 0.42) * Math.cos(y * 0.33);
+        const n = noise(x, y) * 12;
+        const base = blotch > 0.25 ? [56, 96, 46] : [92, 98, 88];
+        return rgb(base[0]! + n, base[1]! + n, base[2]! + n);
+    });
+}
+
+// Hazard stripes: black/yellow diagonals
+export function hazardWall(): Uint32Array {
+    return makeTexture((x, y) => {
+        const stripe = (x + y) % 24 < 10;
+        const n = noise(x, y) * 16;
+        return stripe
+            ? rgb(196 + n, 164 + n, 36)
+            : rgb(38 + n, 36 + n, 34 + n);
+    });
+}
+
+// Door with a colored banner and keycard slot
+export function doorWall(r: number, g: number, b: number): Uint32Array {
+    return makeTexture((x, y) => {
+        const n = noise(x, y) * 8;
+        // dark frame
+        if (x < 3 || x > 60 || y < 3 || y > 60) return rgb(48, 44, 42);
+        // vertical planks
+        if (x % 12 === 0) return rgb(58, 50, 44);
+        // colored banner band
+        if (y >= 26 && y <= 38) return rgb(r + n, g + n, b + n);
+        // keycard slot
+        if (x >= 44 && x <= 52 && y >= 46 && y <= 50) return rgb(24, 22, 22);
+        // door body
+        return rgb(96 + n, 78 + n, 58 + n);
+    });
+}
+
+// Keycard sprite: colored card with a white stripe and chip
+export function keySprite(r: number, g: number, b: number): Uint32Array {
+    return makeTexture((x, y) => {
+        if (x < 16 || x > 48 || y < 20 || y > 44) return 0;
+        if (y >= 26 && y <= 29) return rgb(250, 250, 250);
+        if (x >= 22 && x <= 32 && y >= 34 && y <= 40) return rgb(235, 235, 235);
+        const n = noise(x, y) * 14;
+        return rgb(r + n, g + n, b + n);
+    });
+}
+
+// Hourglass sprite
+export function hourglassSprite(): Uint32Array {
+    return makeTexture((x, y) => {
+        // wooden caps
+        if (y >= 12 && y <= 15 && x >= 18 && x <= 46) return rgb(84, 62, 40);
+        if (y >= 49 && y <= 52 && x >= 18 && x <= 46) return rgb(84, 62, 40);
+
+        const t = y - 16;
+        const b = 51 - y;
+        const half = Math.min(t, b); // distance from the pinch at y=33/34
+        if (half < 0 || half > 16) return 0;
+        const halfWidth = Math.max(3, Math.floor(half * 0.8) + 4);
+        if (Math.abs(x - 32) > halfWidth) return 0;
+
+        const sand = half < 8 ? (y < 33 ? y >= 26 : y <= 40) : false;
+        if (sand) return rgb(240, 200, 80);
+        return rgb(190, 205, 215);
+    });
+}
+
+// Lantern sprite: dark pole with a glowing colored cage
+export function lanternSprite(r: number, g: number, b: number): Uint32Array {
+    return makeTexture((x, y) => {
+        if (x >= 30 && x <= 33 && y >= 34 && y <= 58) return rgb(56, 50, 48);
+        if (x >= 24 && x <= 39 && y >= 12 && y <= 34) {
+            const glow = Math.abs(x - 31) < 5 && y >= 16 && y <= 30;
+            if (glow) return rgb(r, g, b);
+            return rgb(48, 44, 44);
+        }
+        return 0;
+    });
+}
+
+// Breadcrumb sprite: small glowing dot
+export function crumbSprite(): Uint32Array {
+    return makeTexture((x, y) => {
+        const d = Math.hypot(x - 32, y - 32);
+        if (d <= 4) return rgb(255, 225, 130);
+        if (d <= 9) return rgb(210, 150, 60);
+        return 0;
+    });
+}
+
+// Exit portal sprite: bright green arch
+export function portalSprite(): Uint32Array {
+    return makeTexture((x, y) => {
+        const inArch = x >= 18 && x <= 45 && y >= 6 && y <= 58;
+        if (!inArch) return 0;
+        const inCore = x >= 24 && x <= 39 && y >= 12 && y <= 52;
+        if (inCore) {
+            const n = noise(x, y) * 20;
+            return rgb(120 + n, 255, 170 + n);
+        }
+        return rgb(30, 150, 70);
+    });
+}
+
 // ---------------------------------------------------------------------------
 // The original "texture streaming" pack from commit 8ef0432, restored as a
 // selectable render style: brighter bricks with mortar on every row, deeply
@@ -120,10 +247,72 @@ export class Textures {
         this.textures.set(2, this.createBeveledStone());
         this.textures.set(10, this.createFloorTiles());
         this.textures.set(11, this.createCeilingGrid());
+
+        // themed wings and doors for the escape-run tile ids
+        this.textures.set(3, Textures.tint(this.get(1), 1.0, 0.72, 0.65));
+        this.textures.set(4, Textures.tint(this.get(2), 0.8, 0.9, 1.3));
+        this.textures.set(5, Textures.tint(this.get(2), 0.72, 1.15, 0.72));
+        this.textures.set(6, this.createHazard());
+        this.textures.set(20, this.createDoor(200, 60, 60));
+        this.textures.set(21, this.createDoor(60, 90, 200));
+        this.textures.set(22, this.createDoor(210, 170, 50));
     }
 
     get(id: number): Uint32Array {
         return this.textures.get(id) ?? this.fallback;
+    }
+
+    static tint(
+        tex: Uint32Array,
+        fr: number,
+        fg: number,
+        fb: number,
+    ): Uint32Array {
+        const out = new Uint32Array(tex.length);
+        for (let i = 0; i < tex.length; i++) {
+            const c = tex[i]!;
+            const cl = (v: number) => Math.max(0, Math.min(255, Math.floor(v)));
+            const r = cl((c & 0xff) * fr);
+            const g = cl(((c >>> 8) & 0xff) * fg);
+            const b = cl(((c >>> 16) & 0xff) * fb);
+            out[i] = (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
+        }
+        return out;
+    }
+
+    private createHazard(): Uint32Array {
+        const arr = new Uint32Array(64 * 64);
+        for (let y = 0; y < 64; y++) {
+            for (let x = 0; x < 64; x++) {
+                const n = this.noise(x, y) * 0.5;
+                const stripe = (x + y) % 24 < 10;
+                arr[y * 64 + x] = stripe
+                    ? this.packRGB(196 + n, 164 + n, 36)
+                    : this.packRGB(38 + n, 36 + n, 34 + n);
+            }
+        }
+        return arr;
+    }
+
+    private createDoor(r: number, g: number, b: number): Uint32Array {
+        const arr = new Uint32Array(64 * 64);
+        for (let y = 0; y < 64; y++) {
+            for (let x = 0; x < 64; x++) {
+                const n = this.noise(x, y) * 0.5;
+                if (x < 3 || x > 60 || y < 3 || y > 60) {
+                    arr[y * 64 + x] = this.packRGB(48, 44, 42);
+                } else if (x % 12 === 0) {
+                    arr[y * 64 + x] = this.packRGB(58, 50, 44);
+                } else if (y >= 26 && y <= 38) {
+                    arr[y * 64 + x] = this.packRGB(r + n, g + n, b + n);
+                } else if (x >= 44 && x <= 52 && y >= 46 && y <= 50) {
+                    arr[y * 64 + x] = this.packRGB(24, 22, 22);
+                } else {
+                    arr[y * 64 + x] = this.packRGB(96 + n, 78 + n, 58 + n);
+                }
+            }
+        }
+        return arr;
     }
 
     private packRGB(r: number, g: number, b: number): number {

@@ -1,10 +1,17 @@
-import { Renderer } from "./renderer.js";
+import { Game } from "./game.js";
 import { Screen } from "./screen.js";
-import { Player, WorldMap } from "./world.js";
 
 const keys = new Set<string>();
+const screen = new Screen(960, 540);
+const game = new Game(screen);
+
 window.addEventListener("keydown", (e) => {
     keys.add(e.code);
+
+    // keep arrows/space from scrolling the page
+    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+        e.preventDefault();
+    }
 
     if (e.code === "KeyF" && !e.repeat) {
         if (document.fullscreenElement) {
@@ -14,51 +21,20 @@ window.addEventListener("keydown", (e) => {
         }
     }
 
-    if (e.code === "KeyT" && !e.repeat) {
-        console.log(`render mode: ${renderer.toggleRenderMode()}`);
-    }
+    game.onKeyDown(e.code);
 });
 window.addEventListener("keyup", (e) => keys.delete(e.code));
 
-const screen = new Screen(960, 540);
-const worldMap = new WorldMap(16, 16);
-const player = new Player();
-const renderer = new Renderer(screen, worldMap, player);
-
 let lastTime = performance.now();
-const rotSpeed = 2.5;
 
-let forward = 0;
-let strafe = 0;
-let turn = 0;
-
-function render(now: number) {
-    const dt = (now - lastTime) / 1000;
+function loop(now: number) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
     lastTime = now;
 
-    forward = 0;
-    strafe = 0;
-    turn = 0;
+    game.update(dt, keys);
+    game.render(keys.has("KeyM"));
 
-    if (keys.has("KeyW") || keys.has("ArrowUp")) forward += 1;
-    if (keys.has("KeyS") || keys.has("ArrowDown")) forward -= 1;
-
-    if (keys.has("KeyD")) strafe += 1;
-    if (keys.has("KeyA")) strafe -= 1;
-
-    if (keys.has("ArrowRight")) turn += 1;
-    if (keys.has("ArrowLeft")) turn -= 1;
-
-    player.move(forward, strafe, dt, worldMap);
-    player.rotate(turn * rotSpeed * dt);
-
-    renderer.renderScene();
-
-    renderer.drawMinimap();
-
-    screen.present();
-
-    requestAnimationFrame(render);
+    requestAnimationFrame(loop);
 }
 
-requestAnimationFrame(render);
+requestAnimationFrame(loop);

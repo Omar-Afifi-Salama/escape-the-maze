@@ -60,4 +60,9 @@ export class Screen {
     present() {
         this.ctx.putImageData(this.imageData, 0, 0);
     }
+
+    // 2D context for HUD overlays drawn after present()
+    get context(): CanvasRenderingContext2D {
+        return this.ctx;
+    }
 }
